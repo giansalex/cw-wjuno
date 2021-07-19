@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     attr, entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
-    MessageInfo, Response, StdResult, Uint128, WasmMsg, WasmQuery,
+    MessageInfo, Response, StdResult, SubMsg, Uint128, WasmMsg, WasmQuery,
 };
 
 use crate::error::ContractError;
@@ -108,9 +108,8 @@ pub fn try_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         let msg = WasmMsg::Execute {
             contract_addr: state.contract.to_owned(),
             msg: to_binary(&cw20msg)?,
-            send: vec![],
-        }
-        .into();
+            funds: vec![],
+        };
         msgs.push(msg);
     }
 
@@ -121,9 +120,8 @@ pub fn try_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let msg = WasmMsg::Execute {
         contract_addr: state.contract,
         msg: to_binary(&cw20msg)?,
-        send: vec![],
-    }
-    .into();
+        funds: vec![],
+    };
     msgs.push(msg);
 
     let attributes = vec![
@@ -131,11 +129,12 @@ pub fn try_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         attr("amount", amount_to),
         attr("sender", info.sender),
     ];
+
+    let messages = msgs.into_iter().map(SubMsg::new).collect();
     Ok(Response {
-        submessages: vec![],
-        messages: msgs,
+        messages,
         attributes,
-        data: None,
+        ..Response::default()
     })
 }
 
@@ -154,12 +153,11 @@ pub fn try_withdraw(
         amount,
     };
 
-    let message = WasmMsg::Execute {
+    let wasm_execute = WasmMsg::Execute {
         contract_addr: state.contract.to_owned(),
         msg: to_binary(&transfer)?,
-        send: vec![],
-    }
-    .into();
+        funds: vec![],
+    };
 
     // return native funds to user
     let bank_send = CosmosMsg::Bank(BankMsg::Send {
@@ -167,16 +165,14 @@ pub fn try_withdraw(
         amount: vec![Coin::new(amount.into(), state.native_coin)],
     });
 
-    Ok(Response {
-        submessages: vec![],
-        messages: vec![message, bank_send],
-        attributes: vec![
-            attr("action", "withdraw"),
-            attr("amount", amount),
-            attr("sender", info.sender),
-        ],
-        data: None,
-    })
+    let mut res = Response::new();
+    res.add_message(wasm_execute);
+    res.add_message(bank_send);
+    res.add_attribute("action", "withdraw");
+    res.add_attribute("amount", amount);
+    res.add_attribute("sender", info.sender);
+
+    Ok(res)
 }
 
 pub fn try_receive(
@@ -196,16 +192,13 @@ pub fn try_receive(
         amount: vec![Coin::new(msg.amount.into(), state.native_coin)],
     });
 
-    Ok(Response {
-        submessages: vec![],
-        messages: vec![bank_send],
-        attributes: vec![
-            attr("action", "receive_to_withdraw"),
-            attr("amount", msg.amount),
-            attr("sender", msg.sender),
-        ],
-        data: None,
-    })
+    let mut res = Response::new();
+    res.add_message(bank_send);
+    res.add_attribute("action", "receive_to_withdraw");
+    res.add_attribute("amount", msg.amount);
+    res.add_attribute("sender", msg.sender);
+
+    Ok(res)
 }
 
 #[entry_point]
@@ -323,19 +316,28 @@ mod tests {
         let info = mock_info("creator", &coins(20, "juno"));
         let env = mock_env();
         let res = try_deposit(deps.as_mut(), env.clone(), info).unwrap();
-        assert_eq!(res.messages.len(), 2);
-        assert_eq!(
-            res.messages[0],
-            CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: cw20_contract,
-                msg: to_binary(&Cw20ExecuteMsg::Mint {
-                    recipient: env.contract.address.into(),
-                    amount: 10u8.into(),
-                })
-                .unwrap(),
-                send: vec![]
+
+        let payload = vec![WasmMsg::Execute {
+            contract_addr: cw20_contract.to_owned(),
+            msg: to_binary(&Cw20ExecuteMsg::Mint {
+                recipient: env.contract.address.into(),
+                amount: 10u8.into(),
             })
-        );
+            .unwrap(),
+            funds: vec![]
+        }, WasmMsg::Execute {
+            contract_addr: cw20_contract,
+            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+                recipient: "creator".into(),
+                amount: 20u8.into(),
+            })
+            .unwrap(),
+            funds: vec![]
+        }];
+
+        let payload: Vec<_> = payload.into_iter().map(SubMsg::new).collect();
+
+        assert_eq!(res.messages, payload);
     }
 
     #[test]
