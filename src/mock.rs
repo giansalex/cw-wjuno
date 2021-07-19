@@ -2,7 +2,7 @@
 
 use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{to_binary, OwnedDeps, Querier, QuerierResult, SystemResult, Uint128};
-use cw20::{BalanceResponse};
+use cw20::BalanceResponse;
 
 pub fn mock_dependencies_cw20_balance(
     balance: Uint128,
@@ -20,10 +20,10 @@ pub struct BalMockQuerier {
 
 impl Querier for BalMockQuerier {
     fn raw_query(&self, _: &[u8]) -> QuerierResult {
-        let allowance_res = BalanceResponse {
+        let balance_res = BalanceResponse {
             balance: self.amount,
         };
 
-        SystemResult::Ok(to_binary(&allowance_res).into())
+        SystemResult::Ok(to_binary(&balance_res).into())
     }
 }
