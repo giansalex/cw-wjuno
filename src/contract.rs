@@ -317,23 +317,26 @@ mod tests {
         let env = mock_env();
         let res = try_deposit(deps.as_mut(), env.clone(), info).unwrap();
 
-        let payload = vec![WasmMsg::Execute {
-            contract_addr: cw20_contract.to_owned(),
-            msg: to_binary(&Cw20ExecuteMsg::Mint {
-                recipient: env.contract.address.into(),
-                amount: 10u8.into(),
-            })
-            .unwrap(),
-            funds: vec![]
-        }, WasmMsg::Execute {
-            contract_addr: cw20_contract,
-            msg: to_binary(&Cw20ExecuteMsg::Transfer {
-                recipient: "creator".into(),
-                amount: 20u8.into(),
-            })
-            .unwrap(),
-            funds: vec![]
-        }];
+        let payload = vec![
+            WasmMsg::Execute {
+                contract_addr: cw20_contract.to_owned(),
+                msg: to_binary(&Cw20ExecuteMsg::Mint {
+                    recipient: env.contract.address.into(),
+                    amount: 10u8.into(),
+                })
+                .unwrap(),
+                funds: vec![],
+            },
+            WasmMsg::Execute {
+                contract_addr: cw20_contract,
+                msg: to_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: "creator".into(),
+                    amount: 20u8.into(),
+                })
+                .unwrap(),
+                funds: vec![],
+            },
+        ];
 
         let payload: Vec<_> = payload.into_iter().map(SubMsg::new).collect();
 
